@@ -1,9 +1,83 @@
-// Import packages, initialize an express app, and define the port you will use
+const express = require("express");
+const { body, validationResult } = require("express-validator");
+
+const app = express();
+const PORT = 4000;
+
+app.use(express.json());
 
 
+// Request Logging Middleware
 
-// Data for the server
-const menuItems = [
+const requestLogger = (req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] ${req.method} ${req.originalUrl}`);
+
+  if (req.method === "POST" || req.method === "PUT") {
+    console.log("Request Body:");
+    console.log(JSON.stringify(req.body, null, 2));
+  }
+
+  next();
+};
+
+app.use(requestLogger);
+
+
+const menuValidation = [
+  body("name")
+    .isString()
+    .isLength({ min: 3 })
+    .withMessage("Name must be at least 3 characters long"),
+
+  body("description")
+    .isString()
+    .isLength({ min: 10 })
+    .withMessage("Description must be at least 10 characters long"),
+
+  body("price")
+    .isFloat({ gt: 0 })
+    .withMessage("Price must be a number greater than 0"),
+
+  body("category")
+    .isIn(["appetizer", "entree", "dessert", "beverage"])
+    .withMessage("Category must be appetizer, entree, dessert, or beverage"),
+
+  body("ingredients")
+    .isArray({ min: 1 })
+    .withMessage("Ingredients must be an array with at least 1 item"),
+
+  body("available")
+    .optional()
+    .isBoolean()
+    .withMessage("Available must be true or false")
+];
+
+
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    const messages = errors.array().map(err => err.msg);
+
+    return res.status(400).json({
+      error: "Validation failed",
+      messages
+    });
+  }
+
+ 
+  if (req.body.available === undefined) {
+    req.body.available = true;
+  }
+
+  next();
+};
+
+
+// Menu Items
+
+let menuItems = [
   {
     id: 1,
     name: "Classic Burger",
@@ -60,4 +134,85 @@ const menuItems = [
   }
 ];
 
-// Define routes and implement middleware here
+
+
+// GET all menu items
+app.get("/api/menu", (req, res) => {
+  res.status(200).json(menuItems);
+});
+
+// GET single menu item
+app.get("/api/menu/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+  const item = menuItems.find(menu => menu.id === id);
+
+  if (!item) {
+    return res.status(404).json({ message: "Menu item not found" });
+  }
+
+  res.status(200).json(item);
+});
+
+// POST new item
+app.post(
+  "/api/menu",
+  menuValidation,
+  handleValidationErrors,
+  (req, res) => {
+    const newItem = {
+      id: menuItems.length > 0
+        ? menuItems[menuItems.length - 1].id + 1
+        : 1,
+      ...req.body
+    };
+
+    menuItems.push(newItem);
+    res.status(201).json(newItem);
+  }
+);
+
+// PUT update item
+app.put(
+  "/api/menu/:id",
+  menuValidation,
+  handleValidationErrors,
+  (req, res) => {
+    const id = parseInt(req.params.id);
+    const index = menuItems.findIndex(menu => menu.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+
+    menuItems[index] = {
+      ...menuItems[index],
+      ...req.body
+    };
+
+    res.status(200).json(menuItems[index]);
+  }
+);
+
+// DELETE item
+app.delete("/api/menu/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+  const index = menuItems.findIndex(menu => menu.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ message: "Menu item not found" });
+  }
+
+  const deletedItem = menuItems.splice(index, 1);
+
+  res.status(200).json({
+    message: "Item deleted successfully",
+    deletedItem
+  });
+});
+
+
+// Start Server,  I had to change it to port 4000 because 3000 wasn't working.
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
